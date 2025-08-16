@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 void main() {
   runApp(const MyApp());
@@ -115,26 +116,56 @@ class _MyAppState extends State<MyApp> {
   QueueItem? _nowPlaying;
   HttpServer? _server;
   String? _deviceDisplayName;
-  final AudioPlayer _player = AudioPlayer();
+  late final AudioPlayer _player;
   bool _isDownloadingOrPreparing = false;
+  bool _isSkipping = false;
   String _lastSkippedFilePath = '';
+  // Throttle noisy playback logs
+  DateTime _lastPlaybackLogTs = DateTime.fromMillisecondsSinceEpoch(0);
+  ProcessingState? _lastLoggedProcessingState;
+  final Duration _playbackLogInterval = const Duration(seconds: 2);
+
+  void _log(String msg) {
+    final ts = DateTime.now().toIso8601String();
+    print('[CQ $ts] $msg');
+  }
 
   static const int _serverPort = 5283;
 
   @override
   void initState() {
     super.initState();
+    // Initialize media_kit backend for just_audio on desktop platforms (Linux/Windows)
+    if (Platform.isLinux || Platform.isWindows) {
+      JustAudioMediaKit.ensureInitialized();
+    }
+    _player = AudioPlayer();
     _initDeviceDisplayName();
     if (Platform.isMacOS || Platform.isLinux) {
       _startServer();
     } else {
       _initShareListeners();
     }
+    // Detailed player diagnostics
+    _player.playbackEventStream.listen((event) {
+      final now = DateTime.now();
+      final bool stateChanged = event.processingState != _lastLoggedProcessingState;
+      final bool timeElapsed = now.difference(_lastPlaybackLogTs) >= _playbackLogInterval;
+      if (!(stateChanged || timeElapsed)) return;
+      _lastPlaybackLogTs = now;
+      _lastLoggedProcessingState = event.processingState;
+      final pos = _player.position;
+      final dur = _player.duration;
+      final buff = _player.bufferedPosition;
+      _log('PlaybackEvent: state=${event.processingState} pos=$pos dur=$dur buff=$buff');
+    });
     _player.playerStateStream.listen((state) async {
-      var audioUri = (_player.audioSource as UriAudioSource).uri.toString();
-      if (state.processingState == ProcessingState.completed && audioUri != _lastSkippedFilePath) {
+      _log('Player state: processing=${state.processingState} playing=${state.playing}');
+      final source = _player.audioSource;
+      String? audioUri = source is UriAudioSource ? source.uri.toString() : null;
+      if (state.processingState == ProcessingState.completed && audioUri != null && audioUri != _lastSkippedFilePath) {
         _lastSkippedFilePath = audioUri;
-        await _skip();
+        await _safeSkip();
       }
     });
   }
@@ -197,7 +228,7 @@ class _MyAppState extends State<MyApp> {
                                       CupertinoButton(
                                         child: const Text('Skip'),
                                         onPressed: () async {
-                                          await _skip();
+                                          await _safeSkip();
                                         },
                                       ),
                                     ],
@@ -342,35 +373,39 @@ class _MyAppState extends State<MyApp> {
     required String deviceName,
   }) async {
     final headers = {'Content-Type': 'application/json'};
-    print('Sending link to host: $url');
+    _log('Sending link to host: url=$url from=$deviceName');
     final body = jsonEncode({'url': url, 'deviceName': deviceName});
     try {
       final res = await http
           .post(
-            Uri.parse('http://192.168.1.110:5283/append-queue'),
+            Uri.parse('http://192.168.1.108:5283/append-queue'),
             headers: headers,
             body: body,
           )
           .timeout(const Duration(seconds: 3));
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        print('Successfully sent link to host');
+        _log('Link delivered to host: status=${res.statusCode}');
         if (Platform.isAndroid) {
           const MethodChannel channel = MethodChannel('cosmos_queue/share');
           channel.invokeMethod('completeShare');
         }
+      } else {
+        _log('Host responded with non-2xx: status=${res.statusCode} body=${res.body}');
       }
     } catch (err) {
-      print('Error sending link to host: $err');
+      _log('Error sending link to host: $err');
     }
   }
 
   Future<void> _addUrl(String url, String deviceName) async {
+    _log('Add URL requested: url=$url from=$deviceName');
     final String? videoId = _parseYouTubeVideoId(url);
     if (videoId == null) {
+      _log('Parsing failed for URL, not a supported YouTube link');
       throw 'Invalid YouTube video ID';
     }
-    final String title =
-        await _fetchYouTubeTitle(url) ?? 'YouTube Video';
+    final String title = await _fetchYouTubeTitle(url) ?? 'YouTube Video';
+    _log('Parsed video: id=$videoId title="$title"');
     final QueueItem item = QueueItem(
       title: title,
       videoId: videoId,
@@ -382,6 +417,7 @@ class _MyAppState extends State<MyApp> {
       _rr.addItem(deviceName, item);
       _nowPlaying ??= _rr.popNext();
       _queue = _rr.buildUpcomingFlattened();
+      _log('Queue updated: nowPlaying=${_nowPlaying?.videoId} upcoming=${_queue.length}');
       final String? currentNowPlayingId = _nowPlaying?.videoId;
       if (currentNowPlayingId != null && currentNowPlayingId != previousNowPlayingId) {
         _startPlaybackForCurrent();
@@ -399,10 +435,12 @@ class _MyAppState extends State<MyApp> {
         _serverPort,
       );
       _server = server;
+      _log('HTTP server started on 0.0.0.0:$_serverPort');
       server.listen((HttpRequest request) async {
+        _log('HTTP ${request.method} ${request.uri.path}');
         if (request.method == 'POST' && request.uri.path == '/append-queue') {
           final String content = await utf8.decoder.bind(request).join();
-          print('Received link from host: $content');
+          _log('Received append-queue payload: $content');
           try {
             final Map<String, dynamic> payload =
                 jsonDecode(content) as Map<String, dynamic>;
@@ -412,6 +450,7 @@ class _MyAppState extends State<MyApp> {
               request.response.statusCode = HttpStatus.badRequest;
               request.response.headers.add('Access-Control-Allow-Origin', '*');
               await request.response.close();
+              _log('Responded 400 due to missing url/deviceName');
               return;
             }
             try {
@@ -421,6 +460,7 @@ class _MyAppState extends State<MyApp> {
                 request.response.statusCode = HttpStatus.unprocessableEntity;
                 request.response.headers.add('Access-Control-Allow-Origin', '*');
                 await request.response.close();
+                _log('Responded 422 invalid YouTube URL');
                 return;
               }
             }
@@ -429,9 +469,10 @@ class _MyAppState extends State<MyApp> {
             request.response.headers.add('Access-Control-Allow-Origin', '*');
             request.response.write(jsonEncode({'ok': true}));
             await request.response.close();
+            _log('Responded 200 OK to append-queue');
           } catch (e) {
             request.response.statusCode = HttpStatus.internalServerError;
-            print('Error sending link to host: $e');
+            _log('Server error handling append-queue: $e');
             request.response.headers.add('Access-Control-Allow-Origin', '*');
             await request.response.close();
           }
@@ -441,14 +482,16 @@ class _MyAppState extends State<MyApp> {
           request.response.headers.add('Access-Control-Allow-Origin', '*');
           request.response.write(jsonEncode({'status': 'ok'}));
           await request.response.close();
+          _log('Responded to /health');
         } else {
           request.response.statusCode = HttpStatus.notFound;
           request.response.headers.add('Access-Control-Allow-Origin', '*');
           await request.response.close();
+          _log('Responded 404 ${request.uri.path}');
         }
       });
     } catch (err) {
-      print('Error starting server: $err');
+      _log('Error starting server: $err');
     }
   }
 
@@ -513,20 +556,37 @@ class _MyAppState extends State<MyApp> {
   }
 
   Future<void> _startPlaybackForCurrent() async {
-    if (!Platform.isMacOS && !Platform.isLinux) return;
-    if (_isDownloadingOrPreparing) return;
+    if (!Platform.isMacOS && !Platform.isLinux) {
+      _log('Start playback skipped: not desktop platform');
+      return;
+    }
+    if (_isDownloadingOrPreparing) {
+      _log('Start playback skipped: already downloading/preparing');
+      return;
+    }
     final current = _nowPlaying;
-    if (current == null) return;
+    if (current == null) {
+      _log('Start playback skipped: nowPlaying is null');
+      return;
+    }
     _isDownloadingOrPreparing = true;
     try {
-      print('Starting playback for: ${current.title}');
+      _log('Start playback: id=${current.videoId} title="${current.title}"');
       final String filePath = await _downloadOrGetCachedMp3(current.videoId);
+      _log('Audio file ready at: $filePath');
+      // Use just_audio on both macOS & Linux (Linux via just_audio_media_kit)
+      _log('AudioPlayer volume=${_player.volume}');
       await _player.setFilePath(filePath);
+      if (_player.volume < 0.9) {
+        await _player.setVolume(1.0);
+        _log('Volume adjusted to 1.0');
+      }
       await _player.play();
+      _log('Playback started');
     } catch (e) {
-      print('Error playing audio: $e');
+      _log('Error playing audio: $e');
       // Skip on failure
-      await _skip();
+      await _safeSkip();
     } finally {
       _isDownloadingOrPreparing = false;
     }
@@ -541,21 +601,37 @@ class _MyAppState extends State<MyApp> {
     final String target = '${audioDir.path}/$videoId.mp3';
     final File f = File(target);
     if (await f.exists() && await f.length() > 1024) {
+      _log('Using cached MP3: $target');
       return target;
     }
     // Use yt-dlp to download audio
+    _log('Downloading via yt-dlp to $target for video=$videoId');
     final ProcessResult result = await Process.run(
-      '/opt/homebrew/bin/yt-dlp',
+      'yt-dlp',
       ['-f', 'bestaudio', '-x', '--audio-format', 'mp3', '-o', target, 'https://www.youtube.com/watch?v=$videoId'],
       runInShell: true,
     );
 
     if (result.exitCode != 0) {
+      _log('yt-dlp failed: code=${result.exitCode} stderr=${result.stderr}');
       throw 'Download failed: ${result.stderr}';
     }
     if (!await f.exists()) {
+      _log('yt-dlp reported success but file missing');
       throw 'File not found after download';
     }
+    _log('Download complete: $target');
     return target;
+  }
+
+  Future<void> _safeSkip() async {
+    if (_isSkipping) return;
+    _isSkipping = true;
+    try {
+      _log('Safe skip requested');
+      await _skip();
+    } finally {
+      _isSkipping = false;
+    }
   }
 }
