@@ -41,6 +41,9 @@ dependencies:
   # Native media_kit libraries for Linux (audio/video backends)
   media_kit_libs_linux: any
   path_provider: ^2.1.4
+  shared_preferences: ^2.0.15
+  web_socket_channel: ^2.4.0
+  percent_indicator: ^4.2.3
 
 dev_dependencies:
   flutter_test:

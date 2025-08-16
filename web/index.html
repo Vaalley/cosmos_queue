@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmos Queue - Add Songs</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 32px;
+            margin-bottom: 8px;
+        }
+        
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        input[type="text"],
+        input[type="url"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        
+        input[type="text"]:focus,
+        input[type="url"]:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        input[type="text"]::placeholder,
+        input[type="url"]::placeholder {
+            color: #aaa;
+        }
+        
+        button {
+            width: 100%;
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        button:disabled {
+            background: linear-gradient(135deg, #999 0%, #777 100%);
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.hidden {
+            display: none;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse {
+            animation: pulse 0.5s ease-in-out;
+        }
+        
+        .recent-adds {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .recent-adds h3 {
+            color: #555;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 16px;
+        }
+        
+        .recent-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .recent-item .title {
+            color: #333;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 70%;
+        }
+        
+        .recent-item .device {
+            font-size: 11px;
+            color: #999;
+        }
+        
+        .config-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+        }
+        
+        .config-section summary {
+            color: #666;
+            font-size: 14px;
+            cursor: pointer;
+            user-select: none;
+            padding: 8px 0;
+        }
+        
+        .config-section details[open] summary {
+            margin-bottom: 16px;
+        }
+        
+        #connection-status {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #999;
+        }
+        
+        #status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #ccc;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Cosmos Queue</h1>
+            <p class="subtitle">Add songs to the shared playlist</p>
+            <div id="connection-status">
+                <span id="status-indicator"></span>
+                <span id="status-text">Disconnected</span>
+            </div>
+        </div>
+        
+        <form id="addSongForm">
+            <div class="form-group">
+                <label for="url">YouTube or SoundCloud URL</label>
+                <input type="url" id="url" name="url" placeholder="https://youtube.com/watch?v=..." required>
+            </div>
+            
+            <div class="form-group">
+                <label for="deviceName">Your Name / Device</label>
+                <input type="text" id="deviceName" name="deviceName" placeholder="Enter your name" required>
+            </div>
+            
+            <button type="submit">Add to Queue</button>
+        </form>
+        
+        <div id="status" class="status hidden"></div>
+        
+        <div class="config-section">
+            <details>
+                <summary>⚙️ Server Configuration</summary>
+                <div class="form-group">
+                    <label for="serverUrl">Server URL</label>
+                    <input type="url" id="serverUrl" placeholder="http://192.168.1.108:5283">
+                </div>
+            </details>
+        </div>
+        
+        <div class="recent-adds">
+            <h3>Recent Additions</h3>
+            <div id="recentList"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const DEFAULT_SERVER = 'http://192.168.1.108:5283';
+        const RECENT_ADDS_KEY = 'cosmosQueue_recentAdds';
+        const DEVICE_NAME_KEY = 'cosmosQueue_deviceName';
+        const SERVER_URL_KEY = 'cosmosQueue_serverUrl';
+        
+        let ws = null;
+        let reconnectTimer = null;
+        let serverUrl = '';
+        let deviceName = '';
+        let recentItems = [];
+        const maxRecentItems = 5;
+        
+        // Load saved settings on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfiguration();
+            loadRecentAdds();
+            initializeWebSocket();
+        });
+        
+        function loadConfiguration() {
+            const savedDeviceName = localStorage.getItem(DEVICE_NAME_KEY);
+            const savedServerUrl = localStorage.getItem(SERVER_URL_KEY);
+            
+            if (savedDeviceName) {
+                document.getElementById('deviceName').value = savedDeviceName;
+                deviceName = savedDeviceName;
+            }
+            
+            serverUrl = savedServerUrl || DEFAULT_SERVER;
+            document.getElementById('serverUrl').value = serverUrl;
+        }
+        
+        function initializeWebSocket() {
+            if (!serverUrl) return;
+            connectWebSocket();
+        }
+        
+        function connectWebSocket() {
+            if (!serverUrl) return;
+            
+            try {
+                // WebSocket runs on port + 1
+                const wsUrl = serverUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+                const parts = wsUrl.split(':');
+                const port = parseInt(parts[parts.length - 1]) + 1;
+                const host = parts.slice(0, -1).join(':');
+                const fullWsUrl = `${host}:${port}`;
+                
+                ws = new WebSocket(fullWsUrl);
+                
+                ws.onopen = () => {
+                    console.log('WebSocket connected');
+                    updateConnectionStatus(true);
+                    ws.send(JSON.stringify({ type: 'request_state' }));
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (e) {
+                        console.error('Error parsing WebSocket message:', e);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    updateConnectionStatus(false);
+                };
+                
+                ws.onclose = () => {
+                    console.log('WebSocket disconnected');
+                    updateConnectionStatus(false);
+                    // Reconnect after 5 seconds
+                    clearTimeout(reconnectTimer);
+                    reconnectTimer = setTimeout(connectWebSocket, 5000);
+                };
+            } catch (e) {
+                console.error('Failed to connect WebSocket:', e);
+                updateConnectionStatus(false);
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            const indicator = document.getElementById('status-indicator');
+            const text = document.getElementById('status-text');
+            
+            if (connected) {
+                indicator.style.background = '#4CAF50';
+                text.textContent = 'Connected';
+            } else {
+                indicator.style.background = '#ccc';
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'queue_update':
+                    console.log('Queue updated:', data.queue);
+                    break;
+                case 'playback_update':
+                    console.log('Playback update:', data.state);
+                    break;
+                case 'track_added':
+                    console.log('Track added:', data.track);
+                    showNotification(`New track added: ${data.track.title || 'Unknown'}`);
+                    break;
+                case 'track_skipped':
+                    console.log('Track skipped');
+                    break;
+                default:
+                    console.log('Unknown WebSocket message type:', data.type);
+            }
+        }
+        
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s ease';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+        
+        // Form submission
+        document.getElementById('addSongForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('url').value.trim();
+            const deviceName = document.getElementById('deviceName').value.trim();
+            const serverUrl = document.getElementById('serverUrl').value.trim() || DEFAULT_SERVER;
+            
+            if (!url || !deviceName) {
+                showStatus('Please fill in all fields', 'error');
+                return;
+            }
+            
+            // Save settings
+            localStorage.setItem(DEVICE_NAME_KEY, deviceName);
+            localStorage.setItem(SERVER_URL_KEY, serverUrl);
+            
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = 'Adding...';
+            
+            try {
+                const response = await fetch(`${serverUrl}/append-queue`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url, deviceName }),
+                });
+                
+                if (response.ok) {
+                    // Extract video title if possible
+                    const videoId = extractVideoId(url);
+                    let title = 'Unknown Song';
+                    
+                    if (videoId && url.includes('youtube')) {
+                        try {
+                            const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+                            const oembedResponse = await fetch(oembedUrl);
+                            if (oembedResponse.ok) {
+                                const data = await oembedResponse.json();
+                                title = data.title || title;
+                            }
+                        } catch (err) {
+                            console.error('Could not fetch video title:', err);
+                        }
+                    } else if (url.includes('soundcloud')) {
+                        title = 'SoundCloud Track';
+                    }
+                    
+                    showStatus(`✅ Added to queue!`, 'success');
+                    saveRecentAdd(title, deviceName);
+                    document.getElementById('url').value = '';
+                    
+                    // Pulse animation on success
+                    submitButton.classList.add('pulse');
+                    setTimeout(() => submitButton.classList.remove('pulse'), 2000);
+                    
+                } else if (response.status === 422) {
+                    showStatus('Invalid URL', 'error');
+                } else {
+                    showStatus(`Error: Server responded with ${response.status}`, 'error');
+                }
+            } catch (error) {
+                if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    showStatus(`Cannot connect to server at ${serverUrl}. Make sure Cosmos Queue is running.`, 'error');
+                } else {
+                    showStatus(`Error: ${error.message}`, 'error');
+                }
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Add to Queue';
+            }
+        });
+        
+        // Update server URL when changed
+        document.getElementById('serverUrl').addEventListener('change', (e) => {
+            serverUrl = e.target.value.trim() || DEFAULT_SERVER;
+            localStorage.setItem(SERVER_URL_KEY, serverUrl);
+            // Reconnect WebSocket with new server
+            if (ws) {
+                ws.close();
+            }
+            initializeWebSocket();
+        });
+        
+        function extractVideoId(url) {
+            try {
+                const urlObj = new URL(url);
+                const host = urlObj.host.toLowerCase();
+                
+                if (host === 'youtu.be') {
+                    return urlObj.pathname.replace('/', '');
+                }
+                
+                if (host.includes('youtube.com') || host.includes('music.youtube.com')) {
+                    if (urlObj.pathname === '/watch') {
+                        return urlObj.searchParams.get('v');
+                    }
+                    if (urlObj.pathname.startsWith('/shorts/')) {
+                        return urlObj.pathname.split('/')[2];
+                    }
+                }
+            } catch (e) {
+                console.error('Error extracting video ID:', e);
+            }
+            return null;
+        }
+        
+        function showStatus(message, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            
+            setTimeout(() => {
+                statusDiv.classList.add('hidden');
+            }, 5000);
+        }
+        
+        function saveRecentAdd(title, device) {
+            const recentAdds = JSON.parse(localStorage.getItem(RECENT_ADDS_KEY) || '[]');
+            recentAdds.unshift({ title, device, timestamp: Date.now() });
+            
+            // Keep only the last 5 items
+            if (recentAdds.length > maxRecentItems) {
+                recentAdds.length = maxRecentItems;
+            }
+            
+            localStorage.setItem(RECENT_ADDS_KEY, JSON.stringify(recentAdds));
+            loadRecentAdds();
+        }
+        
+        function loadRecentAdds() {
+            const recentAdds = JSON.parse(localStorage.getItem(RECENT_ADDS_KEY) || '[]');
+            const recentList = document.getElementById('recentList');
+            
+            if (recentAdds.length === 0) {
+                recentList.innerHTML = '<div style="color: #999; font-size: 14px;">No recent additions</div>';
+                return;
+            }
+            
+            recentList.innerHTML = recentAdds.map(item => `
+                <div class="recent-item">
+                    <span class="title" title="${item.title}">${item.title}</span>
+                    <span class="device">${item.device}</span>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>
