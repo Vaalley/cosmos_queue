@@ -14,6 +14,59 @@ const DEFAULTS = {
   deviceName: 'Browser',
 };
 
+// Utility: get active tab
+async function getActiveTab() {
+  return new Promise((resolve) => {
+    API.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      resolve((tabs && tabs[0]) || null);
+    });
+  });
+}
+
+// Ask the content script(s) in the active tab for the currently hovered link
+async function getHoveredLinkFromActiveTab() {
+  try {
+    const tab = await getActiveTab();
+    if (!tab || !tab.id) return { href: '', tabUrl: '' };
+
+    // Try all frames to handle iframes (e.g., YouTube embeds, complex pages)
+    let frameIds = [0];
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (API.webNavigation && API.webNavigation.getAllFrames) {
+        const frames = await new Promise((resolve) => {
+          API.webNavigation.getAllFrames({ tabId: tab.id }, (arr) => resolve(arr || []));
+        });
+        if (Array.isArray(frames) && frames.length) {
+          frameIds = frames.map((f) => f.frameId).filter((id) => typeof id === 'number');
+        }
+      }
+    } catch (_) {}
+
+    let hovered = '';
+    for (const frameId of frameIds) {
+      try {
+        const reply = await new Promise((resolve) => {
+          API.tabs.sendMessage(
+            tab.id,
+            { type: 'cq_getHoveredLink' },
+            { frameId },
+            (r) => resolve(r || {})
+          );
+        });
+        if (reply && reply.href) {
+          hovered = reply.href;
+          if (hovered) break;
+        }
+      } catch (_) {}
+    }
+
+    return { href: hovered || '', tabUrl: tab.url || '' };
+  } catch (e) {
+    return { href: '', tabUrl: '' };
+  }
+}
+
 API.runtime.onInstalled.addListener(() => {
   try {
     API.contextMenus.removeAll(() => {
@@ -45,6 +98,45 @@ API.runtime.onInstalled.addListener(() => {
     console.warn('CQ: failed to create context menus', e);
   }
 });
+
+// Keyboard shortcut: add hovered link (fallback to current tab URL)
+try {
+  API.commands.onCommand.addListener(async (command) => {
+    if (command !== 'add-hovered-link') return;
+    try {
+      const { href, tabUrl } = await getHoveredLinkFromActiveTab();
+      const candidate = href || tabUrl;
+      if (!candidate) {
+        notify('Cosmos Queue', 'No hovered link or active tab URL');
+        return;
+      }
+      const tab = await getActiveTab();
+      // show optimistic toast immediately near cursor
+      if (tab && tab.id) {
+        try {
+          API.tabs.sendMessage(tab.id, { type: 'cq_showToast', text: 'Adding to queue…', success: true });
+        } catch (_) {}
+      }
+      await addToQueue(candidate);
+      // on success, show success toast
+      if (tab && tab.id) {
+        try {
+          API.tabs.sendMessage(tab.id, { type: 'cq_showToast', text: 'Added to queue', success: true });
+        } catch (_) {}
+      }
+    } catch (e) {
+      const tab = await getActiveTab().catch(() => null);
+      if (tab && tab.id) {
+        try {
+          API.tabs.sendMessage(tab.id, { type: 'cq_showToast', text: 'Failed to add', success: false });
+        } catch (_) {}
+      }
+      notify('Cosmos Queue', 'Failed to add: ' + (e?.message || e));
+    }
+  });
+} catch (e) {
+  console.warn('CQ: commands not available', e);
+}
 
 API.contextMenus.onClicked.addListener(async (info, tab) => {
   try {

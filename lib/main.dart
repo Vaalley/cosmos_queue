@@ -229,6 +229,19 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
     print('[CQ $ts] $msg');
   }
 
+  void _showToast(String message, {bool success = true}) {
+    if (!mounted) return;
+    final Color bg = success ? Colors.green.shade600 : Colors.red.shade700;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: bg,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   static const int _serverPort = 5283;
 
   @override
@@ -567,6 +580,28 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
     }
   }
 
+  String? _extractYouTubeId(String url) {
+    try {
+      // Common patterns: v=VIDEOID, youtu.be/VIDEOID, /shorts/VIDEOID, /watch?v=VIDEOID&list=...
+      final RegExp re = RegExp(r'(?:[?&]v=|youtu\.be/|/shorts/)([A-Za-z0-9_-]{11})');
+      final match = re.firstMatch(url);
+      if (match != null && match.groupCount >= 1) {
+        return match.group(1);
+      }
+      final uri = Uri.tryParse(url);
+      if (uri != null) {
+        final v = uri.queryParameters['v'];
+        if (v != null && v.length == 11) return v;
+        // Some mobile/music URLs may have the ID as the last path segment
+        if (uri.pathSegments.isNotEmpty) {
+          final last = uri.pathSegments.last;
+          if (last.length == 11 && !last.contains('.')) return last;
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
   void _enqueue(String url, String deviceName) async {
     try {
       String videoId;
@@ -576,15 +611,13 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
       // Parse URL
       if (url.contains('youtube.com') || url.contains('youtu.be')) {
         source = 'youtube';
-        final uri = Uri.tryParse(url);
-        if (uri != null) {
-          videoId = uri.queryParameters['v'] ?? '';
-          if (videoId.isEmpty && uri.pathSegments.isNotEmpty) {
-            videoId = uri.pathSegments.last;
-          }
-        } else {
-          videoId = url.split('v=').last.split('&').first;
+        final id = _extractYouTubeId(url);
+        if (id == null) {
+          _log('Unsupported YouTube URL (no video id): $url');
+          _showToast('Unsupported YouTube URL', success: false);
+          return;
         }
+        videoId = id;
         // Fetch title via yt-dlp
         final result = await Process.run(
           'yt-dlp',
@@ -606,6 +639,7 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
         if (title.isEmpty) title = 'SoundCloud Track';
       } else {
         _log('Unsupported URL: $url');
+        _showToast('Unsupported URL', success: false);
         return;
       }
       
@@ -623,6 +657,7 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
       });
       _broadcastQueueUpdate();
       _persistQueue();
+      _showToast('Added to queue: $title');
       
       // Start playback if nothing is playing
       if (_nowPlaying == null && !_player.playing) {
@@ -663,6 +698,24 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
     final String path = request.uri.path;
     final String method = request.method;
     
+    // CORS: allow all origins and handle preflight
+    try {
+      request.response.headers
+        ..add('Access-Control-Allow-Origin', '*')
+        ..add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        ..add('Access-Control-Allow-Headers', 'Origin, Content-Type, Accept');
+    } catch (_) {
+      // ignore header set errors
+    }
+
+    if (method == 'OPTIONS') {
+      // Preflight request
+      request.response
+        ..statusCode = HttpStatus.noContent;
+      await request.response.close();
+      return;
+    }
+
     try {
       if (path == '/health' && method == 'GET') {
         request.response
@@ -682,6 +735,21 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
             ..headers.contentType = ContentType.json
             ..write(jsonEncode({'error': 'Missing url or device_name'}));
         } else {
+          // Validate URL before enqueueing so clients see meaningful errors
+          bool supported = false;
+          if (url.contains('youtube.com') || url.contains('youtu.be')) {
+            supported = _extractYouTubeId(url) != null;
+          } else if (url.contains('soundcloud.com')) {
+            supported = true;
+          }
+          if (!supported) {
+            request.response
+              ..statusCode = HttpStatus.badRequest
+              ..headers.contentType = ContentType.json
+              ..write(jsonEncode({'error': 'unsupported_url', 'url': url}));
+            await request.response.close();
+            return;
+          }
           _enqueue(url, deviceName);
           request.response
             ..statusCode = HttpStatus.ok
