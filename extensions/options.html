@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Cosmos Queue Options</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 16px; color: #e5e7eb; background: #0f0f1e; max-width: 720px; }
+    h1 { color: #fff; }
+    label { display: block; margin: 12px 0 6px; color: #d1d5db; }
+    input[type="text"] { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: #e5e7eb; }
+    button { margin-top: 12px; padding: 10px 14px; border-radius: 6px; border: 0; background: #667EEA; color: #fff; cursor: pointer; }
+    button.secondary { background: #374151; }
+    .row { margin: 12px 0; }
+    .status { margin-top: 8px; min-height: 18px; font-size: 12px; }
+    small { color: #9ca3af; }
+  </style>
+</head>
+<body>
+  <h1>Cosmos Queue Options</h1>
+
+  <div class="row">
+    <label for="serverBase">Server base URL</label>
+    <input id="serverBase" type="text" placeholder="http://localhost:5283" />
+    <small>Example: http://host-or-ip:5283</small>
+  </div>
+
+  <div class="row">
+    <label for="deviceName">Your device name</label>
+    <input id="deviceName" type="text" placeholder="Browser" />
+    <small>Will appear in the host queue as the "added by" name.</small>
+  </div>
+
+  <div class="row">
+    <button id="save">Save</button>
+    <button id="test" class="secondary">Test connection</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <script src="options.js"></script>
+</body>
+</html>

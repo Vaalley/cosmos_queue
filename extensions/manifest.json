@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Cosmos Queue: Add from Web",
+  "description": "Add the current YouTube or SoundCloud track to your Cosmos Queue host.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Add to Cosmos Queue",
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "activeTab",
+    "tabs",
+    "notifications"
+  ],
+  "host_permissions": [
+    "http://localhost:5283/*",
+    "http://127.0.0.1:5283/*",
+    "http://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cosmos-queue@local",
+      "strict_min_version": "109.0"
+    }
+  }
+}

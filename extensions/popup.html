@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Cosmos Queue</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 12px; color: #e5e7eb; background: #0f0f1e; width: 320px; }
+    h1 { font-size: 16px; margin: 0 0 8px; color: #fff; }
+    .row { margin: 8px 0; }
+    input[type="text"] { width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #374151; background: #111827; color: #e5e7eb; }
+    button { width: 100%; padding: 8px; border-radius: 6px; border: 0; background: #667EEA; color: #fff; cursor: pointer; }
+    button.secondary { background: #374151; }
+    small { color: #9ca3af; }
+    .status { margin-top: 8px; min-height: 18px; font-size: 12px; }
+    a { color: #93c5fd; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <h1>Add to Cosmos Queue</h1>
+
+  <div class="row">
+    <small>Current tab:</small>
+    <div id="currentUrl" style="word-break: break-all; max-height: 3.5em; overflow: auto;"></div>
+  </div>
+
+  <div class="row"><button id="addCurrent">Add current tab</button></div>
+
+  <div class="row">
+    <small>Or paste a URL:</small>
+    <input id="manualUrl" type="text" placeholder="https://youtu.be/... or https://soundcloud.com/..." />
+  </div>
+  <div class="row"><button id="addManual">Add pasted URL</button></div>
+
+  <div class="row"><button id="openOptions" class="secondary">Options</button></div>
+
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
